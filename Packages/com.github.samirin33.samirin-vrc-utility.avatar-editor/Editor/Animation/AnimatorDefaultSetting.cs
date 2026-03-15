@@ -376,7 +376,7 @@ namespace Samirin33.AvatarEditor.Animation.Editor
             }
         }
 
-        [MenuItem("Tools/Samirin Editor Tools/Animator Default Setting", false, 100)]
+        [MenuItem("samirin33 Editor Tools/Animator Default Setting", false, 100)]
         private static void OpenSettings()
         {
 #if UNITY_2022_2_OR_NEWER

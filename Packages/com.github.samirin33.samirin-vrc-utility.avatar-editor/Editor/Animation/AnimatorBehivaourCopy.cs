@@ -314,33 +314,33 @@ public static class AnimatorBehivaourCopy
 
     #endregion
 
-    #region ステート用 MenuItem（Tools/Samirin/... で右クリックメニュー風に利用）
+    // #region ステート用 MenuItem（Tools/Samirin/... で右クリックメニュー風に利用）
 
-    [MenuItem("Tools/Samirin Editor Tools/Animator State/Copy State", false, 102)]
-    private static void MenuCopyState()
-    {
-        if (GetSelectedAnimatorState(out var controller, out _) is AnimatorState state)
-            CopyState(state);
-    }
+    // [MenuItem("samirin33 Editor Tools/Animator State/Copy State", false, 102)]
+    // private static void MenuCopyState()
+    // {
+    //     if (GetSelectedAnimatorState(out var controller, out _) is AnimatorState state)
+    //         CopyState(state);
+    // }
 
-    [MenuItem("Tools/Samirin Editor Tools/Animator State/Copy State", true)]
-    private static bool MenuCopyStateValidate()
-    {
-        return GetSelectedAnimatorState(out _, out _) != null;
-    }
+    // [MenuItem("samirin33 Editor Tools/Animator State/Copy State", true)]
+    // private static bool MenuCopyStateValidate()
+    // {
+    //     return GetSelectedAnimatorState(out _, out _) != null;
+    // }
 
-    [MenuItem("Tools/Samirin Editor Tools/Animator State/Paste State", false, 103)]
-    private static void MenuPasteState()
-    {
-        if (GetFocusedAnimatorContext(out var controller, out var layerIndex))
-            PasteState(controller, layerIndex);
-    }
+    // [MenuItem("samirin33 Editor Tools/Animator State/Paste State", false, 103)]
+    // private static void MenuPasteState()
+    // {
+    //     if (GetFocusedAnimatorContext(out var controller, out var layerIndex))
+    //         PasteState(controller, layerIndex);
+    // }
 
-    [MenuItem("Tools/Samirin Editor Tools/Animator State/Paste State", true)]
-    private static bool MenuPasteStateValidate()
-    {
-        return HasCopiedState && GetFocusedAnimatorContext(out _, out _);
-    }
+    // [MenuItem("samirin33 Editor Tools/Animator State/Paste State", true)]
+    // private static bool MenuPasteStateValidate()
+    // {
+    //     return HasCopiedState && GetFocusedAnimatorContext(out _, out _);
+    // }
 
     // [MenuItem("Assets/Samirin Editor Tools/Animator State/Paste State", false, 1201)]
     // private static void AssetsMenuPasteState()
@@ -355,7 +355,7 @@ public static class AnimatorBehivaourCopy
     //     return HasCopiedState && Selection.activeObject is AnimatorController;
     // }
 
-    #endregion
+    // #endregion
 
     #region CONTEXT メニュー（コンポーネント右クリック時・VRChat 等の派生型でも表示）
 

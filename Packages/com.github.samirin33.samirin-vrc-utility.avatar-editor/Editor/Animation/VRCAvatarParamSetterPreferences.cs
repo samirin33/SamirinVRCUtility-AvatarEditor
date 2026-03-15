@@ -116,7 +116,7 @@ namespace Samirin33.AvatarEditor.Animation.Editor
         /// <summary>追加したパラメータを先頭に移動するか。</summary>
         public static bool AddParametersAtFront
         {
-            get => EditorPrefs.GetBool(AddAtFrontKey, false);
+            get => EditorPrefs.GetBool(AddAtFrontKey, true);
             set => EditorPrefs.SetBool(AddAtFrontKey, value);
         }
     }

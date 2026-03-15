@@ -22,7 +22,7 @@ namespace Samirin33.AvatarEditor.Animation.Editor
         private AnimationClip _replacementClip;
         private int _previewMatchCount = -1;
 
-        [MenuItem("Tools/Samirin Editor Tools/Animation Clip Replace")]
+        [MenuItem("samirin33 Editor Tools/Animation Clip Replace")]
         public static void Open()
         {
             var window = GetWindow<AnimationClipReplaceEditor>("Anim Clip Replace");

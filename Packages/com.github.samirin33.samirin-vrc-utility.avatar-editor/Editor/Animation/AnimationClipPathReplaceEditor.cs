@@ -34,7 +34,7 @@ namespace Samirin33.AvatarEditor.Animation.Editor
             public string to;
         }
 
-        [MenuItem("Tools/Samirin Editor Tools/Animation Clip Path Replace")]
+        [MenuItem("samirin33 Editor Tools/Animation Clip Path Replace")]
         public static void Open()
         {
             var w = GetWindow<AnimationClipPathReplaceEditor>("Anim Path Replace");

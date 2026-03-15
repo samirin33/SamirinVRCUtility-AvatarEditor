@@ -26,18 +26,19 @@ namespace Samirin33.SamirinVRCUtility.AvatarEditor
     /// Animationウィンドウで編集中のAnimatorを取得し、
     /// 編集可能なAnimationClip一覧を表示して編集対象を選択できるエディタ拡張。
     /// </summary>
-    public class AnimationClipSelector : EditorWindow
+    public class AnimationClipSelector : EditorWindow, ISerializationCallbackReceiver
     {
-        private Vector2 _scrollPosition;
+        [SerializeField] private Vector2 _scrollPosition;
         private List<AnimationClip> _clips = new List<AnimationClip>();
-        private bool _hasRestoredClip;
-        private AnimationClip _lastKnownActiveClip;
-        private string _lastRestoredControllerPath;
         private Dictionary<string, bool> _layerFoldoutState = new Dictionary<string, bool>();
+        [SerializeField] private List<string> _serializedFoldoutKeys = new List<string>();
+        [SerializeField] private List<bool> _serializedFoldoutValues = new List<bool>();
         private bool _pendingSliderSave;
-        private AnimationClip _scrollToClipOnNextFrame;
-        private string _searchFilter = "";
-        private GameObject _lastActiveRoot;
+        [SerializeField] private string _searchFilter = "";
+        [SerializeField] private GameObject _lastActiveRoot;
+        [SerializeField] private string _currentControllerPath;
+        [SerializeField] private AnimationClip _lastSelectedClip;
+        private static AnimationClip _pendingClipSelection;
         private Dictionary<int, (bool hasConflict, int pathCount, ConflictEntry[] conflictEntries)> _pathConflictCache = new Dictionary<int, (bool, int, ConflictEntry[])>();
         private string _pathConflictCacheControllerPath;
         private bool _pathConflictCachePending;
@@ -58,25 +59,58 @@ namespace Samirin33.SamirinVRCUtility.AvatarEditor
             }
         }
 
-        [MenuItem("Tools/Samirin Editor Tools/Animation Clip Selector")]
+        [MenuItem("samirin33 Editor Tools/Animation Clip Selector")]
         public static void Open()
         {
             var window = GetWindow<AnimationClipSelector>(WindowTitle);
             window.minSize = new Vector2(280, 200);
         }
 
+        public void OnBeforeSerialize()
+        {
+            _serializedFoldoutKeys.Clear();
+            _serializedFoldoutValues.Clear();
+            foreach (var kvp in _layerFoldoutState)
+            {
+                _serializedFoldoutKeys.Add(kvp.Key);
+                _serializedFoldoutValues.Add(kvp.Value);
+            }
+        }
+
+        public void OnAfterDeserialize()
+        {
+            _layerFoldoutState = new Dictionary<string, bool>();
+            for (int i = 0; i < _serializedFoldoutKeys.Count && i < _serializedFoldoutValues.Count; i++)
+            {
+                _layerFoldoutState[_serializedFoldoutKeys[i]] = _serializedFoldoutValues[i];
+            }
+        }
+
         private void OnEnable()
         {
             _settings = LoadOrCreateSettings();
+            AnimationClipSelectorStateManager.SetSettingsInstance(_settings);
             Undo.undoRedoPerformed += OnUndoRedoPerformed;
+
+            if (_lastSelectedClip != null)
+            {
+                var clip = _lastSelectedClip;
+                EditorApplication.delayCall += () =>
+                {
+                    AnimationWindowHelper.SetAnimationWindowClip(clip);
+                };
+            }
         }
 
         private void OnDisable()
         {
             Undo.undoRedoPerformed -= OnUndoRedoPerformed;
+            if (!string.IsNullOrEmpty(_currentControllerPath))
+            {
+                AnimationClipSelectorStateManager.SaveFoldoutState(_currentControllerPath, _layerFoldoutState);
+            }
+            AnimationClipSelectorStateManager.FlushPendingSave();
             SaveSettings();
-            _hasRestoredClip = false;
-            _lastRestoredControllerPath = null;
             _pathConflictCache.Clear();
             _pathConflictCachePending = false;
         }
@@ -146,7 +180,6 @@ namespace Samirin33.SamirinVRCUtility.AvatarEditor
                         "編集中のオブジェクトがありません。\nヒエラルキーでAnimatorを持つオブジェクトを選択してください。",
                         MessageType.Warning);
                     _clips.Clear();
-                    _lastKnownActiveClip = null;
                     _lastActiveRoot = null;
                     return;
                 }
@@ -160,7 +193,6 @@ namespace Samirin33.SamirinVRCUtility.AvatarEditor
                         "AnimatorまたはAnimator Controllerが見つかりません。\nAnimatorコンポーネントとControllerが設定されたオブジェクトを選択してください。",
                         MessageType.Warning);
                     _clips.Clear();
-                    _lastKnownActiveClip = null;
                     return;
                 }
 
@@ -176,24 +208,17 @@ namespace Samirin33.SamirinVRCUtility.AvatarEditor
                 EditorGUI.BeginChangeCheck();
                 var controllerPath = GetControllerPath(animator.runtimeAnimatorController);
                 var clipsByLayer = GetClipsByGroupedLayer(animator.runtimeAnimatorController);
-                var lastClip = Settings.GetLastDisplayedClip(controllerPath);
-                if (controllerPath != _lastRestoredControllerPath)
-                {
-                    _hasRestoredClip = false;
-                    _lastRestoredControllerPath = controllerPath;
-                }
-                if (isAnimationWindowOpen && !_hasRestoredClip && lastClip != null && _clips.Contains(lastClip))
-                {
-                    AnimationWindowHelper.SetAnimationWindowClip(lastClip);
-                    _hasRestoredClip = true;
-                    _scrollToClipOnNextFrame = lastClip;
-                    ExpandFoldoutContainingClip(clipsByLayer, controllerPath, lastClip, _layerFoldoutState);
-                }
 
-                if (activeClip != null && _clips.Contains(activeClip) && activeClip != _lastKnownActiveClip)
+                if (controllerPath != _currentControllerPath)
                 {
-                    _lastKnownActiveClip = activeClip;
-                    Settings.SetLastDisplayedClip(controllerPath, activeClip);
+                    if (!string.IsNullOrEmpty(_currentControllerPath))
+                    {
+                        AnimationClipSelectorStateManager.SaveFoldoutState(_currentControllerPath, _layerFoldoutState);
+                        AnimationClipSelectorStateManager.RequestSave();
+                    }
+                    _layerFoldoutState.Clear();
+                    AnimationClipSelectorStateManager.RestoreFoldoutState(controllerPath, _layerFoldoutState);
+                    _currentControllerPath = controllerPath;
                 }
 
                 EditorGUILayout.LabelField($"AnimationClip一覧 ({_clips.Count}件)", EditorStyles.boldLabel);
@@ -209,6 +234,8 @@ namespace Samirin33.SamirinVRCUtility.AvatarEditor
                 if (GUILayout.Button(collapseIcon, GUILayout.Width(30), GUILayout.Height(20)))
                 {
                     SetAllFoldouts(clipsByLayer, controllerPath, false, _layerFoldoutState);
+                    AnimationClipSelectorStateManager.SaveFoldoutState(controllerPath, _layerFoldoutState);
+                    AnimationClipSelectorStateManager.RequestSave();
                 }
                 var expandIcon = EditorGUIUtility.IconContent("d_IN_foldout_act_on");
                 if (expandIcon == null) expandIcon = new GUIContent("＋", "すべて開く");
@@ -216,6 +243,8 @@ namespace Samirin33.SamirinVRCUtility.AvatarEditor
                 if (GUILayout.Button(expandIcon, GUILayout.Width(30), GUILayout.Height(20)))
                 {
                     SetAllFoldouts(clipsByLayer, controllerPath, true, _layerFoldoutState);
+                    AnimationClipSelectorStateManager.SaveFoldoutState(controllerPath, _layerFoldoutState);
+                    AnimationClipSelectorStateManager.RequestSave();
                 }
 
                 EditorGUILayout.LabelField("検索", GUILayout.Width(28));
@@ -276,11 +305,9 @@ namespace Samirin33.SamirinVRCUtility.AvatarEditor
                     return _pathConflictCache.TryGetValue(clip.GetInstanceID(), out var v) ? v : ((bool, int, ConflictEntry[])?)null;
                 };
 
-                var scrollViewHeight = Mathf.Max(100, position.height - 280);
                 _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition, GUILayout.ExpandHeight(true));
 
                 float scrollContentY = 0f;
-                float? targetScrollY = null;
                 foreach (var kvp in clipsByLayer)
                 {
                     var layerName = kvp.Key;
@@ -313,7 +340,7 @@ namespace Samirin33.SamirinVRCUtility.AvatarEditor
                         EditorGUI.indentLevel += 1;
                         GUILayout.Space(2);
                         scrollContentY += 2;
-                        DrawClipGroup(rootGroup, controllerPath, layerName, activeRoot, animator, activeClip, Settings, Settings.ItemSpacing, _scrollToClipOnNextFrame, _layerFoldoutState, _searchFilter, !isAnimationWindowOpen, getPathConflict, ref scrollContentY, ref targetScrollY);
+                        DrawClipGroup(rootGroup, controllerPath, layerName, activeRoot, animator, activeClip, Settings, Settings.ItemSpacing, _layerFoldoutState, _searchFilter, !isAnimationWindowOpen, getPathConflict, ref scrollContentY);
                         EditorGUI.indentLevel -= 1;
                         GUILayout.Space(4);
                         scrollContentY += 4;
@@ -321,14 +348,13 @@ namespace Samirin33.SamirinVRCUtility.AvatarEditor
                     }
                 }
 
-                if (targetScrollY.HasValue)
-                {
-                    var viewHeight = Mathf.Max(100, position.height - 200);
-                    _scrollPosition.y = Mathf.Max(0, targetScrollY.Value - viewHeight / 2f + 10f);
-                    _scrollToClipOnNextFrame = null;
-                }
-
                 EditorGUILayout.EndScrollView();
+
+                if (_pendingClipSelection != null)
+                {
+                    _lastSelectedClip = _pendingClipSelection;
+                    _pendingClipSelection = null;
+                }
             });
         }
 
@@ -706,7 +732,7 @@ namespace Samirin33.SamirinVRCUtility.AvatarEditor
             return count;
         }
 
-        private static void DrawClipGroup(ClipGroup group, string controllerPath, string pathPrefix, GameObject activeRoot, Animator animator, AnimationClip activeClip, AnimationClipSelectorSettings settings, float itemSpacing, AnimationClip scrollToClip, Dictionary<string, bool> foldoutState, string searchFilter, bool openAnimationWindowOnClipSelect, System.Func<AnimationClip, (bool hasConflict, int pathCount, ConflictEntry[] conflictEntries)?> getPathConflict, ref float scrollContentY, ref float? targetScrollY)
+        private static void DrawClipGroup(ClipGroup group, string controllerPath, string pathPrefix, GameObject activeRoot, Animator animator, AnimationClip activeClip, AnimationClipSelectorSettings settings, float itemSpacing, Dictionary<string, bool> foldoutState, string searchFilter, bool openAnimationWindowOnClipSelect, System.Func<AnimationClip, (bool hasConflict, int pathCount, ConflictEntry[] conflictEntries)?> getPathConflict, ref float scrollContentY)
         {
             var hasSubGroups = group.Children.Count > 0;
             var hasDirectClips = group.Clips.Count > 0;
@@ -743,7 +769,7 @@ namespace Samirin33.SamirinVRCUtility.AvatarEditor
                         EditorGUI.indentLevel += 2;
                         GUILayout.Space(2);
                         scrollContentY += 2;
-                        DrawClipGroup(child, controllerPath, childPath, activeRoot, animator, activeClip, settings, itemSpacing, scrollToClip, foldoutState, searchFilter, openAnimationWindowOnClipSelect, getPathConflict, ref scrollContentY, ref targetScrollY);
+                        DrawClipGroup(child, controllerPath, childPath, activeRoot, animator, activeClip, settings, itemSpacing, foldoutState, searchFilter, openAnimationWindowOnClipSelect, getPathConflict, ref scrollContentY);
                         EditorGUI.indentLevel -= 2;
                         GUILayout.Space(4);
                         scrollContentY += 4;
@@ -765,9 +791,6 @@ namespace Samirin33.SamirinVRCUtility.AvatarEditor
 
                     var isActive = clip == activeClip;
                     var blockHeight = rowHeight + itemSpacing;
-
-                    if (scrollToClip == clip)
-                        targetScrollY = scrollContentY;
                     scrollContentY += blockHeight;
 
                     var bgColor = isActive
@@ -801,13 +824,23 @@ namespace Samirin33.SamirinVRCUtility.AvatarEditor
                     var labelStyle = isActive ? EditorStyles.boldLabel : EditorStyles.label;
                     if (GUI.Button(btnRect, new GUIContent((isActive ? "● " : "  ") + clip.name, clip.name), labelStyle))
                     {
-                        if (Selection.activeGameObject != activeRoot)
+                        var currentSelection = Selection.activeGameObject;
+                        var animatorRootTransform = activeRoot != null ? activeRoot.transform : null;
+                        var shouldChangeSelection =
+                            animatorRootTransform != null &&
+                            (currentSelection == null ||
+                             (currentSelection != activeRoot &&
+                              !currentSelection.transform.IsChildOf(animatorRootTransform)));
+
+                        if (shouldChangeSelection)
                             Selection.activeGameObject = activeRoot;
                         if (openAnimationWindowOnClipSelect)
                             AnimationWindowHelper.EnsureAnimationWindowOpenAndSetClip(clip);
                         else
                             AnimationWindowHelper.SetAnimationWindowClip(clip);
-                        settings.SetLastDisplayedClip(controllerPath, clip);
+
+                        _pendingClipSelection = clip;
+                        AnimationClipSelectorStateManager.NotifyClipSelected(controllerPath, clip);
                     }
 
                     float warnX = rect.xMax - 54;

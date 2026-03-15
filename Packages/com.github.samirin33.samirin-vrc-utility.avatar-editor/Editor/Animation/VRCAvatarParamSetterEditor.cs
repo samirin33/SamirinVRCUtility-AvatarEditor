@@ -12,7 +12,7 @@ namespace Samirin33.AvatarEditor.Animation.Editor
         static bool _showParamDescriptions;
         static Vector2 _paramDescriptionScroll;
 
-        [MenuItem("Tools/Samirin Editor Tools/VRChat Avatar Param Setter")]
+        [MenuItem("samirin33 Editor Tools/VRChat Avatar Param Setter")]
         public static void Open()
         {
             var w = GetWindow<VRCAvatarParamSetterEditor>();
@@ -25,12 +25,15 @@ namespace Samirin33.AvatarEditor.Animation.Editor
             {
                 EditorGUILayout.Space(4);
                 _animatorController = (RuntimeAnimatorController)EditorGUILayout.ObjectField(
-                "Animator Controller",
-                _animatorController,
-                typeof(RuntimeAnimatorController),
-                false);
+                    "Animator Controller",
+                    _animatorController,
+                    typeof(RuntimeAnimatorController),
+                    false);
 
                 EditorGUILayout.Space(4);
+
+                // ビルトインパラメータの説明は Animator が未設定でも表示する
+                DrawParamDescriptionSection();
 
                 if (_animatorController == null)
                 {
@@ -52,24 +55,69 @@ namespace Samirin33.AvatarEditor.Animation.Editor
                     AddMissingParameters(controller);
                 }
 
-                DrawParamDescriptionSection();
                 DrawPreferencesLink();
             });
         }
 
-        static void DrawParamDescriptionSection()
+        void DrawParamDescriptionSection()
         {
             _showParamDescriptions = EditorGUILayout.BeginFoldoutHeaderGroup(_showParamDescriptions, "ビルトインパラメータの役割・詳細");
             if (_showParamDescriptions)
             {
                 EditorGUILayout.Space(2);
-                _paramDescriptionScroll = EditorGUILayout.BeginScrollView(_paramDescriptionScroll, GUILayout.MaxHeight(320));
+                _paramDescriptionScroll = EditorGUILayout.BeginScrollView(_paramDescriptionScroll, GUILayout.ExpandHeight(true));
+
+                var controller = _animatorController as AnimatorController;
+
                 foreach (var p in VRChatBuiltInParams.All)
                 {
                     EditorGUILayout.BeginVertical(EditorStyles.helpBox, GUILayout.MinHeight(0));
-                    EditorGUILayout.LabelField($"{p.Name} ({p.Type})", EditorStyles.boldLabel);
+                    EditorGUILayout.LabelField($"{p.Name} ({p.Type})", EditorStyles.label);
                     if (!string.IsNullOrEmpty(p.Description))
-                        EditorGUILayout.LabelField(p.Description, EditorStyles.wordWrappedLabel);
+                        EditorGUILayout.LabelField(p.Description, EditorStyles.label);
+
+                    EditorGUILayout.Space(2);
+                    EditorGUILayout.BeginHorizontal();
+                    GUILayout.FlexibleSpace();
+
+                    // パラメータ名コピー
+                    if (GUILayout.Button("名前をコピー", GUILayout.Width(110)))
+                    {
+                        EditorGUIUtility.systemCopyBuffer = p.Name;
+                    }
+
+                    // Animator への追加ボタン
+                    bool hasController = controller != null;
+                    bool hasParam = false;
+                    if (hasController)
+                    {
+                        var parameters = controller.parameters;
+                        for (int i = 0; i < parameters.Length; i++)
+                        {
+                            if (parameters[i].name == p.Name)
+                            {
+                                hasParam = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    bool isExcluded = VRCAvatarParamSetterPreferences.IsExcluded(p.Name);
+
+                    using (new EditorGUI.DisabledScope(!hasController || hasParam || isExcluded))
+                    {
+                        var label = hasParam ? "追加済み" : "Animatorへ追加";
+                        if (GUILayout.Button(label, GUILayout.Width(120)))
+                        {
+                            Undo.RecordObject(controller, "Add VRChat parameter: " + p.Name);
+                            controller.AddParameter(p.Name, p.Type);
+                            EditorUtility.SetDirty(controller);
+                            AssetDatabase.SaveAssetIfDirty(controller);
+                        }
+                    }
+
+                    EditorGUILayout.EndHorizontal();
+
                     EditorGUILayout.EndVertical();
                     EditorGUILayout.Space(2);
                 }
